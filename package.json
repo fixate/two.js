@@ -1,19 +1,36 @@
 {
   "name": "two.js",
-  "version": "0.7.0",
-  "description": "A two-dimensional drawing api meant for modern browsers.",
+  "version": "0.7.0-beta.4",
+  "description": "A renderer agnostic two-dimensional drawing api for the web.",
+  "module": "build/two.module.js",
+  "files": [
+    "package.json",
+    "LICENSE",
+    "README.md",
+    "build/two.js",
+    "build/two.min.js",
+    "build/two.module.js",
+    "extras",
+    "src"
+  ],
+  "directories": {
+    "doc": "documentation",
+    "test": "tests",
+    "example": "utils"
+  },
   "keywords": [
-    "dom",
-    "w3c",
-    "visualization",
     "svg",
-    "animation",
     "canvas2d",
     "webgl",
+    "animation",
     "rendering",
-    "motiongraphics"
+    "scenegraph",
+    "motiongraphics",
+    "visualization",
+    "dom",
+    "w3c"
   ],
-  "homepage": "http://jonobr1.github.io/two.js/",
+  "homepage": "https://two.js.org/",
   "author": {
     "name": "jonobr1",
     "url": "http://jonobr1.com/"
@@ -27,21 +44,27 @@
     "url": "https://github.com/jonobr1/two.js/issues"
   },
   "license": "MIT",
-  "dependencies": {
-    "node-minify": "^2.0.3"
-  },
   "devDependencies": {
-    "grunt": "^0.4.0",
-    "grunt-contrib-jshint": "^0.10.0",
-    "grunt-contrib-watch": "^0.6.0",
-    "grunt-contrib-connect": "^0.8.0",
-    "grunt-contrib-concat": "^0.4.0",
-    "grunt-closure-tools": "^0.9.0",
-    "grunt-contrib-qunit": "^0.5.1",
-    "grunt-contrib-uglify": "^0.4.0",
-    "blueimp-canvas-to-blob": "^2.1.0",
-    "resemblejs": "^1.1.1",
     "animation-frame": "^0.1.7",
-    "underscore": "^1.6.0"
+    "blueimp-canvas-to-blob": "^2.1.0",
+    "jsdoc": "~3.5.5",
+    "jsdoc-to-markdown": "^4.0.1",
+    "moment": "^2.22.2",
+    "node-minify": "^2.0.3",
+    "qunitjs": "^2.4.0",
+    "resemblejs": "^1.1.1",
+    "underscore": "^1.9.1"
+  },
+  "autoupdate": {
+    "source": "git",
+    "target": "git://github.com/jonobr1/two.js.git",
+    "fileMap": [
+      {
+        "basePath": "build",
+        "files": [
+          "two*.js"
+        ]
+      }
+    ]
   }
 }

@@ -45,9 +45,9 @@
 
     _flagEndPoints: false,
 
-    clone: function(parent) {
+    constructor: LinearGradient,
 
-      parent = parent || this.parent;
+    clone: function(parent) {
 
       var stops = _.map(this.stops, function(stop) {
         return stop.clone();
@@ -103,4 +103,4 @@
 
   LinearGradient.MakeObservable(LinearGradient.prototype);
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

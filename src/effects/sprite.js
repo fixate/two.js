@@ -22,6 +22,8 @@
       this.texture = new Two.Texture(path);
     }
 
+    this.origin = new Two.Vector();
+
     this._update();
     this.translation.set(ox || 0, oy || 0);
 
@@ -40,7 +42,7 @@
   _.extend(Sprite, {
 
     Properties: [
-      'texture', 'columns', 'rows', 'frameRate'
+      'texture', 'columns', 'rows', 'frameRate', 'index'
     ],
 
     MakeObservable: function(obj) {
@@ -58,11 +60,11 @@
     _flagColumns: false,
     _flagRows: false,
     _flagFrameRate: false,
+    flagIndex: false,
 
     // Private variables
     _amount: 1,
     _duration: 0,
-    _index: 0,
     _startTime: 0,
     _playing: false,
     _firstFrame: 0,
@@ -74,6 +76,10 @@
     _columns: 1,
     _rows: 1,
     _frameRate: 0,
+    _index: 0,
+    _origin: null,
+
+    constructor: Sprite,
 
     play: function(firstFrame, lastFrame, onLastFrame) {
 
@@ -92,6 +98,11 @@
         this._onLastFrame = onLastFrame;
       } else {
         delete this._onLastFrame;
+      }
+
+      if (this._index !== this._firstFrame) {
+        this._startTime -= 1000 * Math.abs(this._index - this._firstFrame)
+          / this._frameRate;
       }
 
       return this;
@@ -115,8 +126,6 @@
     },
 
     clone: function(parent) {
-
-      parent = parent || this.parent;
 
       var clone = new Sprite(
         this.texture, this.translation.x, this.translation.y,
@@ -143,7 +152,7 @@
       var rows = this._rows;
 
       var width, height, elapsed, amount, duration;
-      var index, iw, ih, isRange;
+      var index, iw, ih, isRange, frames;
 
       if (this._flagColumns || this._flagRows) {
         this._amount = this._columns * this._rows;
@@ -181,8 +190,8 @@
 
           // TODO: Offload perf logic to instance of `Two`.
           elapsed = _.performance.now() - this._startTime;
-          duration = 1000 * (this._lastFrame - this._firstFrame)
-            / this._frameRate;
+          frames = this._lastFrame + 1;
+          duration = 1000 * (frames - this._firstFrame) / this._frameRate;
 
           if (this._loop) {
             elapsed = elapsed % duration;
@@ -190,7 +199,7 @@
             elapsed = Math.min(elapsed, duration);
           }
 
-          index = _.lerp(this._firstFrame, this._lastFrame, elapsed / duration);
+          index = _.lerp(this._firstFrame, frames, elapsed / duration);
           index = Math.floor(index);
 
           if (index !== this._index) {
@@ -202,9 +211,11 @@
 
         }
 
-        var ox = (iw - width) / 2 + width * ((this._index % cols) + 1);
-        var oy = height * Math.floor((this._index / cols))
-          - (ih - height) / 2;
+        var col = this._index % cols;
+        var row = Math.floor(this._index / cols);
+
+        var ox = - width * col + (iw - width) / 2;
+        var oy = - height * row + (ih - height) / 2;
 
         // TODO: Improve performance
         if (ox !== effect.offset.x) {
@@ -237,16 +248,4 @@
 
   Sprite.MakeObservable(Sprite.prototype);
 
-  function map(v, a, b, c, d) {
-    return (d - c) * (v - a) / (b - a) + c;
-  }
-
-  function cmap(v, a, b, c, d) {
-    return Math.min(Math.max((d - c) * (v - a) / (b - a) + c, c), y2);
-  }
-
-  function clamp(v, a, b) {
-    return Math.min(Math.max(v, a), b);
-  }
-
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

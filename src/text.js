@@ -1,19 +1,27 @@
 (function(Two) {
 
-  var root = this;
+  var root = Two.root;
   var getComputedMatrix = Two.Utils.getComputedMatrix;
   var _ = Two.Utils;
 
-  var canvas = (root.document ? root.document.createElement('canvas') : { getContext: _.identity });
+  var canvas = getCanvas();
   var ctx = canvas.getContext('2d');
 
+  /**
+   * @class
+   * @name Two.Text
+   * @param {String} message - The String to be rendered to the scene.
+   * @param {Number} [x=0] - The position in the x direction for the object.
+   * @param {Number} [y=0] - The position in the y direction for the object.
+   * @param {Object} [styles] - An object where styles are applied. Attribute must exist in Two.Text.Properties.
+   */
   var Text = Two.Text = function(message, x, y, styles) {
 
     Two.Shape.call(this);
 
     this._renderer.type = 'text';
-    this._renderer.flagFill = _.bind(Text.FlagFill, this);
-    this._renderer.flagStroke = _.bind(Text.FlagStroke, this);
+    this._renderer.flagFill = _.bind(Two.Text.FlagFill, this);
+    this._renderer.flagStroke = _.bind(Two.Text.FlagStroke, this);
 
     this.value = message;
 
@@ -23,6 +31,8 @@
     if (_.isNumber(y)) {
         this.translation.y = y;
     }
+
+    this.dashes = [];
 
     if (!_.isObject(styles)) {
       return this;
@@ -40,9 +50,12 @@
 
   _.extend(Two.Text, {
 
+    Ratio: 0.6,
+
     Properties: [
       'value', 'family', 'size', 'leading', 'alignment', 'linewidth', 'style',
-      'weight', 'decoration', 'baseline', 'opacity', 'visible', 'fill', 'stroke'
+      'className', 'weight', 'decoration', 'baseline', 'opacity', 'visible',
+      'fill', 'stroke',
     ],
 
     FlagFill: function() {
@@ -57,7 +70,7 @@
 
       Two.Shape.MakeObservable(object);
 
-      _.each(Two.Text.Properties.slice(0, 12), Two.Utils.defineProperty, object);
+      _.each(Two.Text.Properties.slice(0, 13), Two.Utils.defineProperty, object);
 
       Object.defineProperty(object, 'fill', {
         enumerable: true,
@@ -147,6 +160,7 @@
     _flagStroke: true,
     _flagLinewidth: true,
     _flagOpacity: true,
+    _flagClassName: true,
     _flagVisible: true,
 
     _flagClip: false,
@@ -167,9 +181,12 @@
     _stroke: 'transparent',
     _linewidth: 1,
     _opacity: 1,
+    _className: '',
     _visible: true,
 
     _clip: false,
+
+    constructor: Two.Text,
 
     remove: function() {
 
@@ -185,8 +202,6 @@
 
     clone: function(parent) {
 
-      var parent = parent || this.parent;
-
       var clone = new Two.Text(this.value);
       clone.translation.copy(this.translation);
       clone.rotation = this.rotation;
@@ -200,7 +215,7 @@
         parent.add(clone);
       }
 
-      return clone;
+      return clone._update();
 
     },
 
@@ -230,31 +245,68 @@
       return this;
     },
 
-    /**
-     * A shim to not break `getBoundingClientRect` calls. TODO: Implement a
-     * way to calculate proper bounding boxes of `Two.Text`.
-     */
+    // /**
+    //  * A shim to not break `getBoundingClientRect` calls. TODO: Implement a
+    //  * way to calculate proper bounding boxes of `Two.Text`.
+    //  */
     getBoundingClientRect: function(shallow) {
 
       var matrix, border, l, x, y, i, v;
-
-      var left = Infinity, right = -Infinity,
-          top = Infinity, bottom = -Infinity;
+      var left, right, top, bottom;
 
       // TODO: Update this to not __always__ update. Just when it needs to.
       this._update(true);
 
       matrix = !!shallow ? this._matrix : getComputedMatrix(this);
 
-      v = matrix.multiply(0, 0, 1);
+      var height = this.leading;
+      var width = this.value.length * this.size * Text.Ratio;
+
+      switch (this.alignment) {
+        case 'left':
+          left = 0;
+          right = width;
+          break;
+        case 'right':
+          left = - width;
+          right = 0;
+          break;
+        default:
+          left = - width / 2;
+          right = width / 2;
+      }
+
+      switch (this.baseline) {
+        case 'top':
+          top = 0;
+          bottom = height;
+          break;
+        case 'bottom':
+          top = - height;
+          bottom = 0;
+          break;
+        default:
+          top = - height / 2;
+          bottom = height / 2;
+      }
+
+      v = matrix.multiply(left, top, 1);
+
+      top = v.y;
+      left = v.x;
+
+      v = matrix.multiply(right, bottom, 1);
+
+      right = v.x;
+      bottom = v.y;
 
       return {
-        top: v.x,
-        left: v.y,
-        right: v.x,
-        bottom: v.y,
-        width: 0,
-        height: 0
+        top: top,
+        left: left,
+        right: right,
+        bottom: bottom,
+        width: right - left,
+        height: bottom - top
       };
 
     },
@@ -263,9 +315,9 @@
 
       this._flagValue = this._flagFamily = this._flagSize =
         this._flagLeading = this._flagAlignment = this._flagFill =
-        this._flagStroke = this._flagLinewidth = this._flagOpaicty =
+        this._flagStroke = this._flagLinewidth = this._flagOpacity =
         this._flagVisible = this._flagClip = this._flagDecoration =
-        this._flagBaseline = false;
+        this._flagClassName = this._flagBaseline = false;
 
       Two.Shape.prototype.flagReset.call(this);
 
@@ -277,4 +329,15 @@
 
   Two.Text.MakeObservable(Two.Text.prototype);
 
-})((typeof global !== 'undefined' ? global : this).Two);
+  function getCanvas() {
+    if (root.document) {
+      return root.document.createElement('canvas');
+    } else {
+      console.warn('Two.js: Unable to create canvas for Two.Text measurements.');
+      return {
+        getContext: _.identity
+      }
+    }
+  }
+
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

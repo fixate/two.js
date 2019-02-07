@@ -21,6 +21,7 @@
     this.noFill();
 
     this.textures = _.map(paths, ImageSequence.GenerateTexture, this);
+    this.origin = new Two.Vector();
 
     this._update();
     this.translation.set(ox || 0, oy || 0);
@@ -36,7 +37,8 @@
   _.extend(ImageSequence, {
 
     Properties: [
-      'frameRate'
+      'frameRate',
+      'index'
     ],
 
     DefaultFrameRate: 30,
@@ -124,6 +126,7 @@
 
     _flagTextures: false,
     _flagFrameRate: false,
+    _flagIndex: false,
 
     // Private variables
     _amount: 1,
@@ -138,6 +141,9 @@
     // Exposed through getter-setter
     _textures: null,
     _frameRate: 0,
+    _origin: null,
+
+    constructor: ImageSequence,
 
     play: function(firstFrame, lastFrame, onLastFrame) {
 
@@ -156,6 +162,11 @@
         this._onLastFrame = onLastFrame;
       } else {
         delete this._onLastFrame;
+      }
+
+      if (this._index !== this._firstFrame) {
+        this._startTime -= 1000 * Math.abs(this._index - this._firstFrame)
+          / this._frameRate;
       }
 
       return this;
@@ -180,22 +191,20 @@
 
     clone: function(parent) {
 
-      parent = parent || this.parent;
-
       var clone = new ImageSequence(this.textures, this.translation.x,
         this.translation.y, this.frameRate)
 
-        clone._loop = this._loop;
+      clone._loop = this._loop;
 
-        if (this._playing) {
-          clone.play();
-        }
+      if (this._playing) {
+        clone.play();
+      }
 
-        if (parent) {
-          parent.add(clone);
-        }
+      if (parent) {
+        parent.add(clone);
+      }
 
-        return clone;
+      return clone;
 
     },
 
@@ -203,7 +212,7 @@
 
       var effects = this._textures;
       var width, height, elapsed, amount, duration, texture;
-      var index;
+      var index, frames;
 
       if (this._flagTextures) {
         this._amount = effects.length;
@@ -223,8 +232,8 @@
 
         // TODO: Offload perf logic to instance of `Two`.
         elapsed = _.performance.now() - this._startTime;
-        duration = 1000 * (this._lastFrame - this._firstFrame)
-          / this._frameRate;
+        frames = this._lastFrame + 1;
+        duration = 1000 * (frames - this._firstFrame) / this._frameRate;
 
         if (this._loop) {
           elapsed = elapsed % duration;
@@ -232,7 +241,7 @@
           elapsed = Math.min(elapsed, duration);
         }
 
-        index = _.lerp(this._firstFrame, this._lastFrame, elapsed / duration);
+        index = _.lerp(this._firstFrame, frames, elapsed / duration);
         index = Math.floor(index);
 
         if (index !== this._index) {
@@ -262,7 +271,7 @@
 
         }
 
-      } else if (!(this.fill instanceof Two.Texture)) {
+      } else if (this._flagIndex || !(this.fill instanceof Two.Texture)) {
 
         texture = effects[this._index];
 
@@ -278,9 +287,9 @@
             this.height = height;
           }
 
-          this.fill = texture;
-
         }
+
+        this.fill = texture;
 
       }
 
@@ -303,4 +312,4 @@
 
   ImageSequence.MakeObservable(ImageSequence.prototype);
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

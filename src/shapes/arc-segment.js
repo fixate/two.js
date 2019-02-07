@@ -5,11 +5,12 @@
 
   var ArcSegment = Two.ArcSegment = function(ox, oy, ir, or, sa, ea, res) {
 
-    var points = _.map(_.range(res || (Two.Resolution * 3)), function() {
+    var amount = res || (Two.Resolution * 3);
+    var points = _.map(_.range(amount), function() {
       return new Two.Anchor();
     });
 
-    Path.call(this, points, false, false, true);
+    Path.call(this, points, true, false, true);
 
     this.innerRadius = ir;
     this.outerRadius = or;
@@ -46,6 +47,8 @@
     _endAngle: TWO_PI,
     _innerRadius: 0,
     _outerRadius: 0,
+
+    constructor: ArcSegment,
 
     _update: function() {
 
@@ -167,6 +170,10 @@
 
           }
 
+          // Final Point
+          vertices[id].copy(vertices[0]);
+          vertices[id].command = Two.Commands.line;
+
         } else if (!connected) {
 
           vertices[id].command = Two.Commands.line;
@@ -174,12 +181,11 @@
           vertices[id].y = 0;
           id++;
 
-        }
+          // Final Point
+          vertices[id].copy(vertices[0]);
+          vertices[id].command = Two.Commands.line;
 
-        /**
-         * Final Point
-         */
-        vertices[id].command = Two.Commands.close;
+        }
 
       }
 
@@ -198,6 +204,31 @@
 
       return this;
 
+    },
+
+    clone: function(parent) {
+
+      var ir = this.innerRadius;
+      var or = this.outerradius;
+      var sa = this.startAngle;
+      var ea = this.endAngle;
+      var resolution = this.vertices.length;
+
+      var clone = new ArcSegment(0, 0, ir, or, sa, ea, resolution);
+      clone.translation.copy(this.translation);
+      clone.rotation = this.rotation;
+      clone.scale = this.scale;
+
+      _.each(Two.Path.Properties, function(k) {
+        clone[k] = this[k];
+      }, this);
+
+      if (parent) {
+        parent.add(clone);
+      }
+
+      return clone;
+
     }
 
   });
@@ -211,4 +242,4 @@
     return v % l;
   }
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

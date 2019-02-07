@@ -1,14 +1,15 @@
 (function(Two) {
 
-  /**
-   * Constants
-   */
+  // Constants
+
   var min = Math.min, max = Math.max;
   var _ = Two.Utils;
 
   /**
-   * A children collection which is accesible both by index and by object id
-   * @constructor
+   * @class
+   * @name Two.Group.Children
+   * @extends Two.Utils.Collection
+   * @description A children collection which is accesible both by index and by object id
    */
   var Children = function() {
 
@@ -28,9 +29,10 @@
   };
 
   Children.prototype = new Two.Utils.Collection();
-  Children.prototype.constructor = Children;
 
   _.extend(Children.prototype, {
+
+    constructor: Children,
 
     attach: function(children) {
       for (var i = 0; i < children.length; i++) {
@@ -48,7 +50,11 @@
 
   });
 
-  var Group = Two.Group = function() {
+  /**
+   * @class
+   * @name Two.Group
+   */
+  var Group = Two.Group = function(children) {
 
     Two.Shape.call(this, true);
 
@@ -57,7 +63,7 @@
     this.additions = [];
     this.subtractions = [];
 
-    this.children = arguments;
+    this.children = _.isArray(children) ? children : arguments;
 
   };
 
@@ -81,32 +87,96 @@
       this._flagOrder = true;
     },
 
+    Properties: [
+      'fill',
+      'stroke',
+      'linewidth',
+      'visible',
+      'cap',
+      'join',
+      'miter',
+    ],
+
     MakeObservable: function(object) {
 
-      var properties = Two.Path.Properties.slice(0);
-      var oi = _.indexOf(properties, 'opacity');
+      var properties = Two.Group.Properties;
 
-      if (oi >= 0) {
+      Object.defineProperty(object, 'opacity', {
 
-        properties.splice(oi, 1);
+        enumerable: true,
 
-        Object.defineProperty(object, 'opacity', {
+        get: function() {
+          return this._opacity;
+        },
 
-          enumerable: true,
+        set: function(v) {
+          this._flagOpacity = this._opacity !== v;
+          this._opacity = v;
+        }
 
-          get: function() {
-            return this._opacity;
-          },
+      });
 
-          set: function(v) {
-            // Only set flag if there is an actual difference
-            this._flagOpacity = (this._opacity != v);
-            this._opacity = v;
+      Object.defineProperty(object, 'className', {
+
+        enumerable: true,
+
+        get: function() {
+          return this._className;
+        },
+
+        set: function(v) {
+          this._flagClassName  = this._className !== v;
+          this._className = v;
+        }
+
+      });
+
+      Object.defineProperty(object, 'beginning', {
+
+        enumerable: true,
+
+        get: function() {
+          return this._beginning;
+        },
+
+        set: function(v) {
+          this._flagBeginning = this._beginning !== v;
+          this._beginning = v;
+        }
+
+      });
+
+      Object.defineProperty(object, 'ending', {
+
+        enumerable: true,
+
+        get: function() {
+          return this._ending;
+        },
+
+        set: function(v) {
+          this._flagEnding = this._ending !== v;
+          this._ending = v;
+        }
+
+      });
+
+      Object.defineProperty(object, 'length', {
+
+        enumerable: true,
+
+        get: function() {
+          if (this._flagLength || this._length <= 0) {
+            this._length = 0;
+            for (var i = 0; i < this.children.length; i++) {
+              var child = this.children[i];
+              this._length += child.length;
+            }
           }
+          return this._length;
+        }
 
-        });
-
-      }
+      });
 
       Two.Shape.MakeObservable(object);
       Group.MakeGetterSetters(object, properties);
@@ -204,7 +274,11 @@
     _flagSubtractions: false,
     _flagOrder: false,
     _flagOpacity: true,
+    _flagClassName: false,
+    _flagBeginning: false,
+    _flagEnding: false,
 
+    _flagLength: false,
     _flagMask: false,
 
     // Underlying Properties
@@ -213,6 +287,7 @@
     _stroke: '#000',
     _linewidth: 1.0,
     _opacity: 1.0,
+    _className: '',
     _visible: true,
 
     _cap: 'round',
@@ -225,20 +300,21 @@
     _beginning: 0,
     _ending: 1.0,
 
+    _length: 0,
     _mask: null,
 
-    /**
-     * TODO: Group has a gotcha in that it's at the moment required to be bound to
-     * an instance of two in order to add elements correctly. This needs to
-     * be rethought and fixed.
-     */
-    clone: function(parent) {
+    constructor: Group,
 
-      parent = parent || this.parent;
+    // /**
+    //  * TODO: Group has a gotcha in that it's at the moment required to be bound to
+    //  * an instance of two in order to add elements correctly. This needs to
+    //  * be rethought and fixed.
+    //  */
+    clone: function(parent) {
 
       var group = new Group();
       var children = _.map(this.children, function(child) {
-        return child.clone(group);
+        return child.clone();
       });
 
       group.add(children);
@@ -252,28 +328,30 @@
       group.translation.copy(this.translation);
       group.rotation = this.rotation;
       group.scale = this.scale;
+      group.className = this.className;
 
       if (parent) {
         parent.add(group);
       }
 
-      return group;
+      return group._update();
 
     },
 
-    /**
-     * Export the data from the instance of Two.Group into a plain JavaScript
-     * object. This also makes all children plain JavaScript objects. Great
-     * for turning into JSON and storing in a database.
-     */
+    // /**
+    //  * Export the data from the instance of Two.Group into a plain JavaScript
+    //  * object. This also makes all children plain JavaScript objects. Great
+    //  * for turning into JSON and storing in a database.
+    //  */
     toObject: function() {
 
       var result = {
         children: [],
         translation: this.translation.toObject(),
         rotation: this.rotation,
-        scale: this.scale,
+        scale: this.scale instanceof Two.Vector ? this.scale.toObject() : this.scale,
         opacity: this.opacity,
+        className: this.className,
         mask: (this.mask ? this.mask.toObject() : null)
       };
 
@@ -285,27 +363,27 @@
 
     },
 
-    /**
-     * Anchor all children to the upper left hand corner
-     * of the group.
-     */
+    // /**
+    //  * Anchor all children to the upper left hand corner
+    //  * of the group.
+    //  */
     corner: function() {
 
       var rect = this.getBoundingClientRect(true),
        corner = { x: rect.left, y: rect.top };
 
       this.children.forEach(function(child) {
-        child.translation.subSelf(corner);
+        child.translation.sub(corner);
       });
 
       return this;
 
     },
 
-    /**
-     * Anchors all children around the center of the group,
-     * effectively placing the shape around the unit circle.
-     */
+    // /**
+    //  * Anchors all children around the center of the group,
+    //  * effectively placing the shape around the unit circle.
+    //  */
     center: function() {
 
       var rect = this.getBoundingClientRect(true);
@@ -317,7 +395,7 @@
 
       this.children.forEach(function(child) {
         if (child.isShape) {
-          child.translation.subSelf(rect.centroid);
+          child.translation.sub(rect.centroid);
         }
       });
 
@@ -327,10 +405,10 @@
 
     },
 
-    /**
-     * Recursively search for id. Returns the first element found.
-     * Returns null if none found.
-     */
+    // /**
+    //  * Recursively search for id. Returns the first element found.
+    //  * Returns null if none found.
+    //  */
     getById: function (id) {
       var search = function (node, id) {
         if (node.id === id) {
@@ -347,10 +425,10 @@
       return search(this, id) || null;
     },
 
-    /**
-     * Recursively search for classes. Returns an array of matching elements.
-     * Empty array if none found.
-     */
+    // /**
+    //  * Recursively search for classes. Returns an array of matching elements.
+    //  * Empty array if none found.
+    //  */
     getByClassName: function (cl) {
       var found = [];
       var search = function (node, cl) {
@@ -366,11 +444,11 @@
       return search(this, cl);
     },
 
-    /**
-     * Recursively search for children of a specific type,
-     * e.g. Two.Polygon. Pass a reference to this type as the param.
-     * Returns an empty array if none found.
-     */
+    // /**
+    //  * Recursively search for children of a specific type,
+    //  * e.g. Two.Polygon. Pass a reference to this type as the param.
+    //  * Returns an empty array if none found.
+    //  */
     getByType: function(type) {
       var found = [];
       var search = function (node, type) {
@@ -386,9 +464,9 @@
       return search(this, type);
     },
 
-    /**
-     * Add objects to the group.
-     */
+    // /**
+    //  * Add objects to the group.
+    //  */
     add: function(objects) {
 
       // Allow to pass multiple objects either as array or as multiple arguments
@@ -410,16 +488,16 @@
 
     },
 
-    /**
-     * Remove objects from the group.
-     */
+    // /**
+    //  * Remove objects from the group.
+    //  */
     remove: function(objects) {
 
       var l = arguments.length,
         grandparent = this.parent;
 
       // Allow to call remove without arguments
-      // This will detach the object from the scene.
+      // This will detach the object from its own parent.
       if (l <= 0 && grandparent) {
         grandparent.remove(this);
         return this;
@@ -444,10 +522,10 @@
 
     },
 
-    /**
-     * Return an object with top, left, right, bottom, width, and height
-     * parameters of the group.
-     */
+    // /**
+    //  * Return an object with top, left, right, bottom, width, and height
+    //  * parameters of the group.
+    //  */
     getBoundingClientRect: function(shallow) {
       var rect;
 
@@ -458,17 +536,21 @@
       var left = Infinity, right = -Infinity,
           top = Infinity, bottom = -Infinity;
 
-      this.children.forEach(function(child) {
+      var regex = Two.Texture.RegularExpressions.effect;
 
-        if (/(linear-gradient|radial-gradient|gradient)/.test(child._renderer.type)) {
-          return;
+      for (var i = 0; i < this.children.length; i++) {
+
+        var child = this.children[i];
+
+        if (!child.visible || regex.test(child._renderer.type)) {
+          continue;
         }
 
         rect = child.getBoundingClientRect(shallow);
 
         if (!_.isNumber(rect.top)   || !_.isNumber(rect.left)   ||
             !_.isNumber(rect.right) || !_.isNumber(rect.bottom)) {
-          return;
+          continue;
         }
 
         top = min(rect.top, top);
@@ -476,7 +558,7 @@
         right = max(rect.right, right);
         bottom = max(rect.bottom, bottom);
 
-      }, this);
+      }
 
       return {
         top: top,
@@ -489,9 +571,9 @@
 
     },
 
-    /**
-     * Trickle down of noFill
-     */
+    // /**
+    //  * Trickle down of noFill
+    //  */
     noFill: function() {
       this.children.forEach(function(child) {
         child.noFill();
@@ -499,9 +581,9 @@
       return this;
     },
 
-    /**
-     * Trickle down of noStroke
-     */
+    // /**
+    //  * Trickle down of noStroke
+    //  */
     noStroke: function() {
       this.children.forEach(function(child) {
         child.noStroke();
@@ -509,15 +591,60 @@
       return this;
     },
 
-    /**
-     * Trickle down subdivide
-     */
+    // /**
+    //  * Trickle down subdivide
+    //  */
     subdivide: function() {
       var args = arguments;
       this.children.forEach(function(child) {
         child.subdivide.apply(child, args);
       });
       return this;
+    },
+
+    _update: function() {
+
+      if (this._flagBeginning || this._flagEnding) {
+
+        var beginning = Math.min(this._beginning, this._ending);
+        var ending = Math.max(this._beginning, this._ending);
+        var length = this.length;
+        var sum = 0;
+
+        var bd = beginning * length;
+        var ed = ending * length;
+        var distance = (ed - bd);
+
+        for (var i = 0; i < this.children.length; i++) {
+
+          var child = this.children[i];
+          var l = child.length;
+
+          if (bd > sum + l) {
+            child.beginning = 1;
+            child.ending = 1;
+          } else if (ed < sum) {
+            child.beginning = 0;
+            child.ending = 0;
+          } else if (bd > sum && bd < sum + l) {
+            child.beginning = (bd - sum) / l;
+            child.ending = 1;
+          } else if (ed > sum && ed < sum + l) {
+            child.beginning = 0;
+            child.ending = (ed - sum) / l;
+          } else {
+            child.beginning = 0;
+            child.ending = 1;
+          }
+
+          sum += l;
+
+        }
+
+      }
+
+      return Two.Shape.prototype._update.apply(this, arguments);
+
     },
 
     flagReset: function() {
@@ -532,7 +659,8 @@
         this._flagSubtractions = false;
       }
 
-      this._flagOrder = this._flagMask = this._flagOpacity = false;
+      this._flagOrder = this._flagMask = this._flagOpacity = this._flagClassName
+        this._flagBeginning = this._flagEnding = false;
 
       Two.Shape.prototype.flagReset.call(this);
 
@@ -544,14 +672,14 @@
 
   Group.MakeObservable(Group.prototype);
 
-  /**
-   * Helper function used to sync parent-child relationship within the
-   * `Two.Group.children` object.
-   *
-   * Set the parent of the passed object to another object
-   * and updates parent-child relationships
-   * Calling with one arguments will simply remove the parenting
-   */
+  // /**
+  //  * Helper function used to sync parent-child relationship within the
+  //  * `Two.Group.children` object.
+  //  *
+  //  * Set the parent of the passed object to another object
+  //  * and updates parent-child relationships
+  //  * Calling with one arguments will simply remove the parenting
+  //  */
   function replaceParent(child, newParent) {
 
     var parent = child.parent;
@@ -601,4 +729,4 @@
 
   }
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

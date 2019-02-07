@@ -22,10 +22,10 @@
      */
     createElement: function(name, attrs) {
       var tag = name;
-      var elem = document.createElementNS(this.ns, tag);
+      var elem = document.createElementNS(svg.ns, tag);
       if (tag === 'svg') {
         attrs = _.defaults(attrs || {}, {
-          version: this.version
+          version: svg.version
         });
       }
       if (!_.isEmpty(attrs)) {
@@ -40,7 +40,11 @@
     setAttributes: function(elem, attrs) {
       var keys = Object.keys(attrs);
       for (var i = 0; i < keys.length; i++) {
-        elem.setAttribute(keys[i], attrs[keys[i]]);
+        if (/href/.test(keys[i])) {
+          elem.setAttributeNS(svg.xlink, keys[i], attrs[keys[i]]);
+        } else {
+          elem.setAttribute(keys[i], attrs[keys[i]]);
+        }
       }
       return this;
     },
@@ -66,7 +70,7 @@
       var l = points.length,
         last = l - 1,
         d, // The elusive last Two.Commands.move point
-        ret = '';
+        string = '';
 
       for (var i = 0; i < l; i++) {
         var b = points[i];
@@ -78,16 +82,30 @@
         var c = points[next];
 
         var vx, vy, ux, uy, ar, bl, br, cl;
+        var rx, ry, xAxisRotation, largeArcFlag, sweepFlag;
 
         // Access x and y directly,
         // bypassing the getter
-        var x = toFixed(b._x);
-        var y = toFixed(b._y);
+        var x = toFixed(b.x);
+        var y = toFixed(b.y);
 
-        switch (b._command) {
+        switch (b.command) {
 
           case Two.Commands.close:
             command = Two.Commands.close;
+            break;
+
+          case Two.Commands.arc:
+
+            rx = b.rx;
+            ry = b.ry;
+            xAxisRotation = b.xAxisRotation;
+            largeArcFlag = b.largeArcFlag;
+            sweepFlag = b.sweepFlag;
+
+            command = Two.Commands.arc + ' ' + rx + ' ' + ry + ' '
+              + xAxisRotation + ' ' + largeArcFlag + ' ' + sweepFlag + ' '
+              + x + ' ' + y;
             break;
 
           case Two.Commands.curve:
@@ -95,7 +113,7 @@
             ar = (a.controls && a.controls.right) || Two.Vector.zero;
             bl = (b.controls && b.controls.left) || Two.Vector.zero;
 
-            if (a._relative) {
+            if (a.relative) {
               vx = toFixed((ar.x + a.x));
               vy = toFixed((ar.y + a.y));
             } else {
@@ -103,7 +121,7 @@
               vy = toFixed(ar.y);
             }
 
-            if (b._relative) {
+            if (b.relative) {
               ux = toFixed((bl.x + b.x));
               uy = toFixed((bl.y + b.y));
             } else {
@@ -121,7 +139,7 @@
             break;
 
           default:
-            command = b._command + ' ' + x + ' ' + y;
+            command = b.command + ' ' + x + ' ' + y;
 
         }
 
@@ -129,7 +147,7 @@
 
         if (i >= last && closed) {
 
-          if (b._command === Two.Commands.curve) {
+          if (b.command === Two.Commands.curve) {
 
             // Make sure we close to the most previous Two.Commands.move
             c = d;
@@ -137,7 +155,7 @@
             br = (b.controls && b.controls.right) || b;
             cl = (c.controls && c.controls.left) || c;
 
-            if (b._relative) {
+            if (b.relative) {
               vx = toFixed((br.x + b.x));
               vy = toFixed((br.y + b.y));
             } else {
@@ -145,7 +163,7 @@
               vy = toFixed(br.y);
             }
 
-            if (c._relative) {
+            if (c.relative) {
               ux = toFixed((cl.x + c.x));
               uy = toFixed((cl.y + c.y));
             } else {
@@ -158,17 +176,20 @@
 
             command +=
               ' C ' + vx + ' ' + vy + ' ' + ux + ' ' + uy + ' ' + x + ' ' + y;
+
           }
 
-          command += ' Z';
+          if (b.command !== Two.Commands.close) {
+            command += ' Z';
+          }
 
         }
 
-        ret += command + ' ';
+        string += command + ' ';
 
       }
 
-      return ret;
+      return string;
 
     },
 
@@ -284,6 +305,10 @@
           this._renderer.elem.setAttribute('opacity', this._opacity);
         }
 
+        if (this._flagClassName) {
+          this._renderer.elem.setAttribute('class', this._className);
+        }
+
         if (this._flagAdditions) {
           this.additions.forEach(svg.group.appendChild, context);
         }
@@ -356,7 +381,7 @@
         }
 
         if (this._flagVertices) {
-          var vertices = svg.toString(this._vertices, this._closed);
+          var vertices = svg.toString(this._renderer.vertices, this._closed);
           changed.d = vertices;
         }
 
@@ -389,6 +414,10 @@
           changed['fill-opacity'] = this._opacity;
         }
 
+        if (this._flagClassName) {
+          changed['class'] = this._className;
+        }
+
         if (this._flagVisible) {
           changed.visibility = this._visible ? 'visible' : 'hidden';
         }
@@ -403,6 +432,10 @@
 
         if (this._flagMiter) {
           changed['stroke-miterlimit'] = this._miter;
+        }
+
+        if (this.dashes && this.dashes.length > 0) {
+          changed['stroke-dasharray'] = this.dashes.join(' ');
         }
 
         // If there is no attached DOM element yet,
@@ -515,8 +548,14 @@
         if (this._flagOpacity) {
           changed.opacity = this._opacity;
         }
+        if (this._flagClassName) {
+          changed['class'] = this._className;
+        }
         if (this._flagVisible) {
           changed.visibility = this._visible ? 'visible' : 'hidden';
+        }
+        if (this.dashes && this.dashes.length > 0) {
+          changed['stroke-dasharray'] = this.dashes.join(' ');
         }
 
         if (!this._renderer.elem) {
@@ -738,24 +777,19 @@
         }
 
         var changed = {};
-        var styles = {};
+        var styles = { x: 0, y: 0 };
         var image = this.image;
 
         if (this._flagLoaded && this.loaded) {
 
-          styles.x = 0;
-          styles.y = 0;
-          styles.width = image.width;
-          styles.height = image.height;
-
           switch (image.nodeName.toLowerCase()) {
 
             case 'canvas':
-              styles.href = image.toDataURL('image/png');
+              styles.href = styles['xlink:href'] = image.toDataURL('image/png');
               break;
             case 'img':
             case 'image':
-              styles.href = this.src;
+              styles.href = styles['xlink:href'] = this.src;
               break;
 
           }
@@ -781,25 +815,41 @@
             }
           }
 
+          if (changed.x > 0) {
+            changed.x *= - 1;
+          }
+          if (changed.y > 0) {
+            changed.y *= - 1;
+          }
+
         }
 
-        if (this._flagScale || this._flagLoaded) {
+        if (this._flagScale || this._flagLoaded || this._flagRepeat) {
 
           changed.width = 0;
           changed.height = 0;
 
           if (image) {
+
+            styles.width = changed.width = image.width;
+            styles.height = changed.height = image.height;
+
+            // TODO: Hack / Bandaid
+            switch (this._repeat) {
+              case 'no-repeat':
+                changed.width += 1;
+                changed.height += 1;
+                break;
+            }
+
             if (this._scale instanceof Two.Vector) {
-              changed.width = image.width * this._scale.x;
-              changed.height = image.height * this._scale.y;
+              changed.width *= this._scale.x;
+              changed.height *= this._scale.y;
             } else {
-              changed.width = image.width * this._scale;
-              changed.height = image.height * this._scale;
+              changed.width *= this._scale;
+              changed.height *= this._scale;
             }
           }
-
-          styles.width = changed.width;
-          styles.height = changed.height;
 
         }
 
@@ -862,6 +912,8 @@
 
   _.extend(Renderer.prototype, Two.Utils.Events, {
 
+    constructor: Renderer,
+
     setSize: function(width, height) {
 
       this.width = width;
@@ -872,7 +924,7 @@
         height: height
       });
 
-      return this;
+      return this.trigger(Two.Events.resize, width, height);
 
     },
 
@@ -886,4 +938,4 @@
 
   });
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

@@ -1,10 +1,17 @@
 (function(Two) {
 
+  var root = Two.root;
   var _ = Two.Utils;
+  var anchor;
   var regex = {
-    video: /\.(mp4|webm)$/i,
-    image: /\.(jpe?g|png|gif|tiff)$/i
+    video: /\.(mp4|webm|ogg)$/i,
+    image: /\.(jpe?g|png|gif|tiff)$/i,
+    effect: /texture|gradient/i
   };
+
+  if (root.document) {
+    anchor = document.createElement('a');
+  }
 
   var Texture = Two.Texture = function(src, callback) {
 
@@ -42,24 +49,59 @@
 
     Properties: [
       'src',
-      'image',
-      'loaded'
+      'loaded',
+      'repeat'
     ],
+
+    RegularExpressions: regex,
 
     ImageRegistry: new Two.Registry(),
 
+    getAbsoluteURL: function(path) {
+      if (!anchor) {
+        // TODO: Fix for headless environments
+        return path;
+      }
+      anchor.href = path;
+      return anchor.href;
+    },
+
+    loadHeadlessBuffer: new Function('texture', 'loaded', [
+      'var fs = require("fs");',
+      'var buffer = fs.readFileSync(texture.src);',
+
+      'texture.image.src = buffer;',
+      'loaded();'
+    ].join('\n')),
+
     getImage: function(src) {
 
-      if (Texture.ImageRegistry.contains(src)) {
-        return Texture.ImageRegistry.get(src);
+      var absoluteSrc = Texture.getAbsoluteURL(src);
+
+      if (Texture.ImageRegistry.contains(absoluteSrc)) {
+        return Texture.ImageRegistry.get(absoluteSrc);
       }
 
       var image;
 
-      if (regex.video.test(src)) {
-        image = document.createElement('video');
+      if (Two.Utils.Image) {
+
+        // TODO: Fix for headless environments
+        image = new Two.Utils.Image();
+        Two.CanvasRenderer.Utils.shim(image, 'img');
+
+      } else if (root.document) {
+
+        if (regex.video.test(absoluteSrc)) {
+          image = document.createElement('video');
+        } else {
+          image = document.createElement('img');
+        }
+
       } else {
-        image = document.createElement('img');
+
+        console.warn('Two.js: no prototypical image defined for Two.Texture');
+
       }
 
       image.crossOrigin = 'anonymous';
@@ -79,29 +121,54 @@
       img: function(texture, callback) {
 
         var loaded = function(e) {
-          texture.image.removeEventListener('load', loaded, false);
-          texture.image.removeEventListener('error', error, false);
+          if (_.isFunction(texture.image.removeEventListener)) {
+            texture.image.removeEventListener('load', loaded, false);
+            texture.image.removeEventListener('error', error, false);
+          }
           if (_.isFunction(callback)) {
             callback();
           }
         };
         var error = function(e) {
-          texture.image.removeEventListener('load', loaded, false);
-          texture.image.removeEventListener('error', error, false);
+          if (_.isFunction(texture.image.removeEventListener)) {
+            texture.image.removeEventListener('load', loaded, false);
+            texture.image.removeEventListener('error', error, false);
+          }
           throw new Two.Utils.Error('unable to load ' + texture.src);
         };
 
-        texture.image.addEventListener('load', loaded, false);
-        texture.image.addEventListener('error', error, false);
+        if (_.isNumber(texture.image.width) && texture.image.width > 0
+          && _.isNumber(texture.image.height) && texture.image.height > 0) {
+            loaded();
+        } else if (_.isFunction(texture.image.addEventListener)) {
+          texture.image.addEventListener('load', loaded, false);
+          texture.image.addEventListener('error', error, false);
+        }
+
+        texture._src = Texture.getAbsoluteURL(texture._src);
+
+        if (texture.image && texture.image.getAttribute('two-src')) {
+          return;
+        }
+
         texture.image.setAttribute('two-src', texture.src);
         Texture.ImageRegistry.add(texture.src, texture.image);
-        texture.image.src = texture.src;
+
+        if (Two.Utils.isHeadless) {
+
+          Texture.loadHeadlessBuffer(texture, loaded);
+
+        } else {
+
+          texture.image.src = texture.src;
+
+        }
 
       },
       video: function(texture, callback) {
 
         var loaded = function(e) {
-          texture.image.removeEventListener('load', loaded, false);
+          texture.image.removeEventListener('canplaythrough', loaded, false);
           texture.image.removeEventListener('error', error, false);
           texture.image.width = texture.image.videoWidth;
           texture.image.height = texture.image.videoHeight;
@@ -111,13 +178,24 @@
           }
         };
         var error = function(e) {
-          texture.image.removeEventListener('load', loaded, false);
+          texture.image.removeEventListener('canplaythrough', loaded, false);
           texture.image.removeEventListener('error', error, false);
           throw new Two.Utils.Error('unable to load ' + texture.src);
         };
 
+        texture._src = Texture.getAbsoluteURL(texture._src);
         texture.image.addEventListener('canplaythrough', loaded, false);
         texture.image.addEventListener('error', error, false);
+
+        if (texture.image && texture.image.getAttribute('two-src')) {
+          return;
+        }
+
+        if (Two.Utils.isHeadless) {
+          throw new Two.Utils.Error('video textures are not implemented in headless environments.');
+          return;
+        }
+
         texture.image.setAttribute('two-src', texture.src);
         Texture.ImageRegistry.add(texture.src, texture.image);
         texture.image.src = texture.src;
@@ -164,6 +242,36 @@
 
       _.each(Texture.Properties, Two.Utils.defineProperty, object);
 
+      Object.defineProperty(object, 'image', {
+        enumerable: true,
+        get: function() {
+          return this._image;
+        },
+        set: function(image) {
+
+          var tag = image && image.nodeName.toLowerCase();
+          var index;
+
+          switch (tag) {
+            case 'canvas':
+              index = '#' + image.id;
+              break;
+            default:
+              index = image.src;
+          }
+
+          if (Texture.ImageRegistry.contains(index)) {
+            this._image = Texture.ImageRegistry.get(image.src);
+          } else {
+            this._image = image;
+          }
+
+          this._flagImage = true;
+
+        }
+
+      });
+
       Object.defineProperty(object, 'offset', {
         enumerable: true,
         get: function() {
@@ -209,7 +317,9 @@
 
     _flagSrc: false,
     _flagImage: false,
+    _flagVideo: false,
     _flagLoaded: false,
+    _flagRepeat: false,
 
     _flagOffset: false,
     _flagScale: false,
@@ -217,9 +327,12 @@
     _src: '',
     _image: null,
     _loaded: false,
+    _repeat: 'no-repeat',
 
     _scale: 1,
     _offset: null,
+
+    constructor: Texture,
 
     clone: function() {
       return new Texture(this.src);
@@ -235,18 +348,23 @@
     _update: function() {
 
       if (this._flagSrc || this._flagImage) {
+
         this.trigger(Two.Events.change);
-        this.loaded = false;
-        Texture.load(this, _.bind(function() {
-          this.loaded = true;
-          this
-            .trigger(Two.Events.change)
-            .trigger(Two.Events.load);
-        }, this));
+
+        if (this._flagSrc || this._flagImage) {
+          this.loaded = false;
+          Texture.load(this, _.bind(function() {
+            this.loaded = true;
+            this
+              .trigger(Two.Events.change)
+              .trigger(Two.Events.load);
+          }, this));
+        }
+
       }
 
-      if (this.image.readyState >= 4) {
-        this._flagImage = true;
+      if (this._image && this._image.readyState >= 4) {
+        this._flagVideo = true;
       }
 
       return this;
@@ -256,7 +374,7 @@
     flagReset: function() {
 
       this._flagSrc = this._flagImage = this._flagLoaded
-        = this._flagScale = this._flagOffset = false;
+        = this._flagVideo = this._flagScale = this._flagOffset = false;
 
       return this;
 
@@ -266,4 +384,4 @@
 
   Texture.MakeObservable(Texture.prototype);
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

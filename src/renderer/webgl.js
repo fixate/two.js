@@ -4,7 +4,7 @@
    * Constants
    */
 
-  var root = this,
+  var root = Two.root,
     multiplyMatrix = Two.Matrix.Multiply,
     mod = Two.Utils.mod,
     identity = [1, 0, 0, 0, 1, 0, 0, 0, 1],
@@ -12,6 +12,7 @@
     getRatio = Two.Utils.getRatio,
     getComputedMatrix = Two.Utils.getComputedMatrix,
     toFixed = Two.Utils.toFixed,
+    CanvasUtils = Two[Two.Types.canvas].Utils,
     _ = Two.Utils;
 
   var webgl = {
@@ -108,6 +109,11 @@
           }
         }
 
+        for (var i = 0; i < this.children.length; i++) {
+          var child = this.children[i];
+          webgl[child._renderer.type].render.call(child, gl, program);
+        }
+
         this.children.forEach(webgl.group.renderChild, {
           gl: gl,
           program: program
@@ -141,7 +147,7 @@
         var next, prev, a, c, ux, uy, vx, vy, ar, bl, br, cl, x, y;
         var isOffset;
 
-        var commands = elem._vertices;
+        var commands = elem._renderer.vertices;
         var canvas = this.canvas;
         var ctx = this.ctx;
 
@@ -155,6 +161,7 @@
         var join = elem._join;
         var miter = elem._miter;
         var closed = elem._closed;
+        var dashes = elem.dashes;
         var length = commands.length;
         var last = length - 1;
 
@@ -199,6 +206,10 @@
           ctx.globalAlpha = opacity;
         }
 
+        if (dashes && dashes.length > 0) {
+          ctx.setLineDash(dashes);
+        }
+
         var d;
         ctx.save();
         ctx.scale(scale, scale);
@@ -207,15 +218,32 @@
         ctx.beginPath();
         for (var i = 0; i < commands.length; i++) {
 
-          b = commands[i];
+          var b = commands[i];
 
-          x = toFixed(b._x);
-          y = toFixed(b._y);
+          x = toFixed(b.x);
+          y = toFixed(b.y);
 
-          switch (b._command) {
+          switch (b.command) {
 
             case Two.Commands.close:
               ctx.closePath();
+              break;
+
+            case Two.Commands.arc:
+
+              var rx = b.rx;
+              var ry = b.ry;
+              var xAxisRotation = b.xAxisRotation;
+              var largeArcFlag = b.largeArcFlag;
+              var sweepFlag = b.sweepFlag;
+
+              prev = closed ? mod(i - 1, length) : max(i - 1, 0);
+              a = commands[prev];
+
+              var ax = toFixed(a.x);
+              var ay = toFixed(a.y);
+
+              CanvasUtils.renderSvgArcCommand(ctx, ax, ay, rx, ry, largeArcFlag, sweepFlag, xAxisRotation, x, y);
               break;
 
             case Two.Commands.curve:
@@ -229,16 +257,16 @@
               bl = (b.controls && b.controls.left) || Two.Vector.zero;
 
               if (a._relative) {
-                vx = toFixed((ar.x + a._x));
-                vy = toFixed((ar.y + a._y));
+                vx = toFixed((ar.x + a.x));
+                vy = toFixed((ar.y + a.y));
               } else {
                 vx = toFixed(ar.x);
                 vy = toFixed(ar.y);
               }
 
               if (b._relative) {
-                ux = toFixed((bl.x + b._x));
-                uy = toFixed((bl.y + b._y));
+                ux = toFixed((bl.x + b.x));
+                uy = toFixed((bl.y + b.y));
               } else {
                 ux = toFixed(bl.x);
                 uy = toFixed(bl.y);
@@ -254,23 +282,23 @@
                 cl = (c.controls && c.controls.left) || Two.Vector.zero;
 
                 if (b._relative) {
-                  vx = toFixed((br.x + b._x));
-                  vy = toFixed((br.y + b._y));
+                  vx = toFixed((br.x + b.x));
+                  vy = toFixed((br.y + b.y));
                 } else {
                   vx = toFixed(br.x);
                   vy = toFixed(br.y);
                 }
 
                 if (c._relative) {
-                  ux = toFixed((cl.x + c._x));
-                  uy = toFixed((cl.y + c._y));
+                  ux = toFixed((cl.x + c.x));
+                  uy = toFixed((cl.y + c.y));
                 } else {
                   ux = toFixed(cl.x);
                   uy = toFixed(cl.y);
                 }
 
-                x = toFixed(c._x);
-                y = toFixed(c._y);
+                x = toFixed(c.x);
+                y = toFixed(c.y);
 
                 ctx.bezierCurveTo(vx, vy, ux, uy, x, y);
 
@@ -421,13 +449,14 @@
         var flagTexture = this._flagVertices || this._flagFill
           || (this._fill instanceof Two.LinearGradient && (this._fill._flagSpread || this._fill._flagStops || this._fill._flagEndPoints))
           || (this._fill instanceof Two.RadialGradient && (this._fill._flagSpread || this._fill._flagStops || this._fill._flagRadius || this._fill._flagCenter || this._fill._flagFocal))
-          || (this._fill instanceof Two.Texture && (this._fill._flagLoaded && this._fill.loaded || this._fill._flagOffset || this._fill._flagScale))
+          || (this._fill instanceof Two.Texture && (this._fill._flagLoaded && this._fill.loaded || this._fill._flagImage || this._fill._flagVideo || this._fill._flagRepeat || this._fill._flagOffset || this._fill._flagScale))
           || (this._stroke instanceof Two.LinearGradient && (this._stroke._flagSpread || this._stroke._flagStops || this._stroke._flagEndPoints))
           || (this._stroke instanceof Two.RadialGradient && (this._stroke._flagSpread || this._stroke._flagStops || this._stroke._flagRadius || this._stroke._flagCenter || this._stroke._flagFocal))
-          || (this._stroke instanceof Two.Texture && (this._stroke._flagLoaded && this._stroke.loaded || this._stroke._flagOffset || this._fill._flagScale))
+          || (this._stroke instanceof Two.Texture && (this._stroke._flagLoaded && this._stroke.loaded || this._stroke._flagImage || this._stroke._flagVideo || this._stroke._flagRepeat || this._stroke._flagOffset || this._fill._flagScale))
           || this._flagStroke || this._flagLinewidth || this._flagOpacity
           || parent._flagOpacity || this._flagVisible || this._flagCap
           || this._flagJoin || this._flagMiter || this._flagScale
+          || (this.dashes && this.dashes.length > 0)
           || !this._renderer.texture;
 
         if (flagParentMatrix || flagMatrix) {
@@ -457,11 +486,22 @@
 
           this._renderer.opacity = this._opacity * parent._renderer.opacity;
 
-          webgl.path.getBoundingClientRect(this._vertices, this._linewidth, this._renderer.rect);
+          webgl.path.getBoundingClientRect(this._renderer.vertices, this._linewidth, this._renderer.rect);
           webgl.getTriangles(this._renderer.rect, this._renderer.triangles);
 
           webgl.updateBuffer.call(webgl, gl, this, program);
           webgl.updateTexture.call(webgl, gl, this);
+
+        } else {
+
+          // We still need to update child Two elements on the fill and
+          // stroke properties.
+          if (!_.isString(this._fill)) {
+            this._fill._update();
+          }
+          if (!_.isString(this._stroke)) {
+            this._stroke._update();
+          }
 
         }
 
@@ -511,6 +551,7 @@
         var linewidth = elem._linewidth * scale;
         var fill = elem._fill;
         var opacity = elem._renderer.opacity || elem._opacity;
+        var dashes = elem.dashes;
 
         canvas.width = Math.max(Math.ceil(elem._renderer.rect.width * scale), 1);
         canvas.height = Math.max(Math.ceil(elem._renderer.rect.height * scale), 1);
@@ -555,6 +596,9 @@
         }
         if (_.isNumber(opacity)) {
           ctx.globalAlpha = opacity;
+        }
+        if (dashes && dashes.length > 0) {
+          ctx.setLineDash(dashes);
         }
 
         ctx.save();
@@ -636,12 +680,12 @@
         ctx.textBaseline = elem._baseline;
 
         // TODO: Estimate this better
-        var width = ctx.measureText(elem._value).width;
-        var height = Math.max(elem._size || elem._leading);
+        var width = ctx.measureText(elem._value).width * 1.25;
+        var height = Math.max(elem._size, elem._leading) * 1.25;
 
         if (this._linewidth && !webgl.isHidden.test(this._stroke)) {
-          // width += this._linewidth; // TODO: Not sure if the `measure` calcs this.
-          height += this._linewidth;
+          width += this._linewidth * 2;
+          height += this._linewidth * 2;
         }
 
         var w = width / 2;
@@ -706,15 +750,16 @@
         var flagTexture = this._flagVertices || this._flagFill
           || (this._fill instanceof Two.LinearGradient && (this._fill._flagSpread || this._fill._flagStops || this._fill._flagEndPoints))
           || (this._fill instanceof Two.RadialGradient && (this._fill._flagSpread || this._fill._flagStops || this._fill._flagRadius || this._fill._flagCenter || this._fill._flagFocal))
-          || (this._fill instanceof Two.Texture && (this._fill._flagLoaded && this._fill.loaded))
+          || (this._fill instanceof Two.Texture && (this._fill._flagLoaded && this._fill.loaded || this._fill._flagImage || this._fill._flagVideo || this._fill._flagRepeat || this._fill._flagOffset || this._fill._flagScale))
           || (this._stroke instanceof Two.LinearGradient && (this._stroke._flagSpread || this._stroke._flagStops || this._stroke._flagEndPoints))
           || (this._stroke instanceof Two.RadialGradient && (this._stroke._flagSpread || this._stroke._flagStops || this._stroke._flagRadius || this._stroke._flagCenter || this._stroke._flagFocal))
-          || (this._texture instanceof Two.Texture && (this._texture._flagLoaded && this._texture.loaded))
+          || (this._stroke instanceof Two.Texture && (this._stroke._flagLoaded && this._stroke.loaded || this._stroke._flagImage || this._stroke._flagVideo || this._stroke._flagRepeat || this._stroke._flagOffset || this._fill._flagScale))
           || this._flagStroke || this._flagLinewidth || this._flagOpacity
           || parent._flagOpacity || this._flagVisible || this._flagScale
           || this._flagValue || this._flagFamily || this._flagSize
           || this._flagLeading || this._flagAlignment || this._flagBaseline
           || this._flagStyle || this._flagWeight || this._flagDecoration
+          || (this.dashes && this.dashes.length > 0)
           || !this._renderer.texture;
 
         if (flagParentMatrix || flagMatrix) {
@@ -749,6 +794,17 @@
 
           webgl.updateBuffer.call(webgl, gl, this, program);
           webgl.updateTexture.call(webgl, gl, this);
+
+        } else {
+
+          // We still need to update child Two elements on the fill and
+          // stroke properties.
+          if (!_.isString(this._fill)) {
+            this._fill._update();
+          }
+          if (!_.isString(this._stroke)) {
+            this._stroke._update();
+          }
 
         }
 
@@ -857,9 +913,12 @@
         this._update();
 
         var image = this.image;
+        var repeat;
 
-        if (!this._renderer.effect || (this._flagLoaded && this.loaded)) {
-          this._renderer.effect = ctx.createPattern(this.image, 'repeat');
+        if (((this._flagLoaded || this._flagImage || this._flagVideo || this._flagRepeat) && this.loaded)) {
+          this._renderer.effect = ctx.createPattern(image, this._repeat);
+        } else if (!this._renderer.effect) {
+          return this.flagReset();
         }
 
         if (this._flagOffset || this._flagLoaded || this._flagScale) {
@@ -868,13 +927,13 @@
             this._renderer.offset = new Two.Vector();
           }
 
-          this._renderer.offset.x = this._offset.x;
-          this._renderer.offset.y = this._offset.y;
+          this._renderer.offset.x = - this._offset.x;
+          this._renderer.offset.y = - this._offset.y;
 
           if (image) {
 
-            this._renderer.offset.x -= image.width / 2;
-            this._renderer.offset.y -= image.height / 2;
+            this._renderer.offset.x += image.width / 2;
+            this._renderer.offset.y += image.height / 2;
 
             if (this._scale instanceof Two.Vector) {
               this._renderer.offset.x *= this._scale.x;
@@ -1086,6 +1145,11 @@
     var params, gl, vs, fs;
     this.domElement = options.domElement || document.createElement('canvas');
 
+    if (!_.isUndefined(options.offscreenElement)) {
+      webgl.canvas = options.offscreenElement;
+      webgl.ctx = webgl.canvas.getContext('2d');
+    }
+
     // Everything drawn on the canvas needs to come from the stage.
     this.scene = new Two.Group();
     this.scene.parent = this;
@@ -1157,6 +1221,8 @@
 
   _.extend(Renderer.prototype, Two.Utils.Events, {
 
+    constructor: Renderer,
+
     setSize: function(width, height, ratio) {
 
       this.width = width;
@@ -1167,10 +1233,12 @@
       this.domElement.width = width * this.ratio;
       this.domElement.height = height * this.ratio;
 
-      _.extend(this.domElement.style, {
-        width: width + 'px',
-        height: height + 'px'
-      });
+      if (_.isObject(this.domElement.style)) {
+        _.extend(this.domElement.style, {
+          width: width + 'px',
+          height: height + 'px'
+        });
+      }
 
       width *= this.ratio;
       height *= this.ratio;
@@ -1186,7 +1254,7 @@
         this.program, 'u_resolution');
       this.ctx.uniform2f(resolutionLocation, width, height);
 
-      return this;
+      return this.trigger(Two.Events.resize, width, height, ratio);
 
     },
 
@@ -1207,4 +1275,4 @@
 
   });
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);

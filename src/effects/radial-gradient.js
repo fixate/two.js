@@ -62,9 +62,9 @@
     _flagCenter: false,
     _flagFocal: false,
 
-    clone: function(parent) {
+    constructor: RadialGradient,
 
-      parent = parent || this.parent;
+    clone: function(parent) {
 
       var stops = _.map(this.stops, function(stop) {
         return stop.clone();
@@ -125,4 +125,4 @@
 
   RadialGradient.MakeObservable(RadialGradient.prototype);
 
-})((typeof global !== 'undefined' ? global : this).Two);
+})((typeof global !== 'undefined' ? global : (this || self || window)).Two);
